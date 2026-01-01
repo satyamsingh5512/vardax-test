@@ -1,10 +1,12 @@
 import { NextResponse } from 'next/server'
+import { headers } from 'next/headers'
+
+const VARDAX_API_URL = process.env.VARDAX_API_URL || 'http://localhost:8000'
 
 /**
- * MOCK API ENDPOINT - Replace with actual firewall logic
- *
- * This is a placeholder endpoint for local development/testing.
- * In production, implement your actual firewall check logic here.
+ * VARDAx Firewall Check Endpoint
+ * 
+ * Checks the current request against VARDAx firewall
  *
  * Expected Request:
  *   POST /api/firewall-check
@@ -18,26 +20,83 @@ import { NextResponse } from 'next/server'
 export async function POST(request: Request) {
   try {
     const body = await request.json()
-    console.log('Firewall check request:', body)
+    const headersList = await headers()
+    
+    // Get client IP
+    const clientIp = headersList.get('x-forwarded-for')?.split(',')[0] || 
+                     headersList.get('x-real-ip') || 
+                     'unknown'
 
-    // TODO: Implement actual firewall logic here
-    // For now, randomly allow/block for testing purposes
-    const isAllowed = Math.random() > 0.5
+    console.log('[VARDAx] Firewall check request:', { ...body, ip: clientIp })
 
-    if (isAllowed) {
-      return NextResponse.json({
-        allowed: true,
-        message: 'Access granted',
-        redirect: '/app',
+    // Prepare request data for VARDAx
+    const requestData = {
+      ip: clientIp,
+      path: body.path || '/',
+      method: 'POST',
+      userAgent: headersList.get('user-agent') || '',
+      clientHint: body.clientHint,
+      timestamp: new Date().toISOString(),
+    }
+
+    try {
+      // Check with VARDAx firewall
+      const vardaxResponse = await fetch(`${VARDAX_API_URL}/api/check`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestData),
       })
-    } else {
-      return NextResponse.json({
-        allowed: false,
-        message: 'Blocked by firewall: IP address not in allowlist',
-      })
+
+      if (vardaxResponse.ok) {
+        const result = await vardaxResponse.json()
+        
+        console.log('[VARDAx] Check result:', result)
+
+        if (result.allowed) {
+          return NextResponse.json({
+            allowed: true,
+            message: result.message || 'Access granted by VARDAx',
+            redirect: '/app',
+          })
+        } else {
+          return NextResponse.json({
+            allowed: false,
+            message: result.message || 'Blocked by VARDAx firewall',
+          })
+        }
+      } else {
+        // VARDAx returned an error status
+        const errorText = await vardaxResponse.text()
+        console.error('[VARDAx] Error response:', errorText)
+        
+        return NextResponse.json({
+          allowed: false,
+          message: 'Firewall check failed: Unable to verify access',
+        })
+      }
+    } catch (fetchError) {
+      // VARDAx is not reachable - fail open or closed based on config
+      console.error('[VARDAx] Connection failed:', fetchError)
+      
+      // Fail open for development (allow if VARDAx is down)
+      // Change to fail closed (block) for production
+      const failOpen = process.env.VARDAX_FAIL_OPEN !== 'false'
+      
+      if (failOpen) {
+        return NextResponse.json({
+          allowed: true,
+          message: 'Access granted (VARDAx unavailable)',
+          redirect: '/app',
+        })
+      } else {
+        return NextResponse.json({
+          allowed: false,
+          message: 'Firewall service unavailable',
+        })
+      }
     }
   } catch (error) {
-    console.error('Firewall check error:', error)
+    console.error('[VARDAx] Firewall check error:', error)
     return NextResponse.json(
       { allowed: false, message: 'Internal server error' },
       { status: 500 }
