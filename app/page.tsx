@@ -12,6 +12,12 @@ interface FirewallResponse {
   redirect?: string
 }
 
+interface VardaxStatus {
+  connected: boolean
+  status: 'online' | 'offline' | 'error' | 'checking'
+  message: string
+}
+
 type UIState = 'idle' | 'loading' | 'allowed' | 'blocked'
 
 interface Toast {
@@ -49,12 +55,44 @@ export default function FirewallGatePage() {
   const [toasts, setToasts] = useState<Toast[]>([])
   const [shakeCard, setShakeCard] = useState(false)
   const [showModal, setShowModal] = useState(false)
+  const [vardaxStatus, setVardaxStatus] = useState<VardaxStatus>({
+    connected: false,
+    status: 'checking',
+    message: 'Checking VARDAx connection...',
+  })
 
   // Refs for focus management
   const requestButtonRef = useRef<HTMLButtonElement>(null)
   const modalRef = useRef<HTMLDivElement>(null)
   const previousFocusRef = useRef<HTMLElement | null>(null)
   const toastIdRef = useRef(0)
+
+  // Check VARDAx connection status
+  const checkVardaxStatus = useCallback(async () => {
+    setVardaxStatus(prev => ({ ...prev, status: 'checking' }))
+    try {
+      const res = await fetch('/api/vardax-status')
+      const data = await res.json()
+      setVardaxStatus({
+        connected: data.connected,
+        status: data.connected ? 'online' : 'offline',
+        message: data.message,
+      })
+    } catch {
+      setVardaxStatus({
+        connected: false,
+        status: 'offline',
+        message: 'Unable to check VARDAx status',
+      })
+    }
+  }, [])
+
+  // Check VARDAx status on mount and periodically
+  useEffect(() => {
+    checkVardaxStatus()
+    const interval = setInterval(checkVardaxStatus, 30000) // Check every 30s
+    return () => clearInterval(interval)
+  }, [checkVardaxStatus])
 
   // Add toast notification
   const addToast = useCallback((headline: string, message: string) => {
@@ -181,6 +219,74 @@ export default function FirewallGatePage() {
 
   return (
     <main className="min-h-screen flex items-center justify-center p-4">
+      {/* VARDAx Connection Status - Top Bar */}
+      <div className="fixed top-4 left-4 z-40">
+        <button
+          onClick={checkVardaxStatus}
+          className={`
+            flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium
+            transition-all duration-300 shadow-md
+            focus:outline-none focus:ring-2 focus:ring-offset-2
+            ${vardaxStatus.status === 'online' 
+              ? 'bg-green-100 text-green-800 hover:bg-green-200 focus:ring-green-500' 
+              : vardaxStatus.status === 'checking'
+              ? 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200 focus:ring-yellow-500'
+              : 'bg-red-100 text-red-800 hover:bg-red-200 focus:ring-red-500'
+            }
+          `}
+          aria-label={`VARDAx status: ${vardaxStatus.message}. Click to refresh.`}
+        >
+          {/* Status Indicator Dot */}
+          <span className="relative flex h-3 w-3">
+            {vardaxStatus.status === 'checking' ? (
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-400 opacity-75" />
+            ) : vardaxStatus.status === 'online' ? (
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+            ) : null}
+            <span 
+              className={`relative inline-flex rounded-full h-3 w-3 ${
+                vardaxStatus.status === 'online' 
+                  ? 'bg-green-500' 
+                  : vardaxStatus.status === 'checking'
+                  ? 'bg-yellow-500'
+                  : 'bg-red-500'
+              }`} 
+            />
+          </span>
+          
+          {/* Status Text */}
+          <span>
+            {vardaxStatus.status === 'online' 
+              ? 'VARDAx Connected' 
+              : vardaxStatus.status === 'checking'
+              ? 'Checking...'
+              : 'VARDAx Disconnected'
+            }
+          </span>
+
+          {/* Refresh Icon */}
+          <svg 
+            className={`w-4 h-4 ${vardaxStatus.status === 'checking' ? 'animate-spin' : ''}`}
+            fill="none" 
+            stroke="currentColor" 
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+          >
+            <path 
+              strokeLinecap="round" 
+              strokeLinejoin="round" 
+              strokeWidth={2} 
+              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" 
+            />
+          </svg>
+        </button>
+
+        {/* Tooltip with details */}
+        <div className="mt-2 text-xs text-gray-500 max-w-[200px]">
+          {vardaxStatus.message}
+        </div>
+      </div>
+
       {/* Main Card */}
       <div
         className={`
