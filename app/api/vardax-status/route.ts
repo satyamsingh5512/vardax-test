@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 
-const VARDAX_API_URL = process.env.VARDAX_API_URL || 'http://localhost:8000'
+const VARDAX_API_URL = process.env.VARDAX_API_URL || 'https://spectrological-cinda-unfunereally.ngrok-free.dev'
 
 /**
  * VARDAx Connection Status Endpoint
@@ -13,6 +13,9 @@ export async function GET() {
 
     const response = await fetch(`${VARDAX_API_URL}/api/health`, {
       method: 'GET',
+      headers: {
+        'ngrok-skip-browser-warning': 'true',
+      },
       signal: controller.signal,
     })
 

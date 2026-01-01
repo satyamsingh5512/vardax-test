@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { headers } from 'next/headers'
 
-const VARDAX_API_URL = process.env.VARDAX_API_URL || 'http://localhost:8000'
+const VARDAX_API_URL = process.env.VARDAX_API_URL || 'https://spectrological-cinda-unfunereally.ngrok-free.dev'
 
 /**
  * VARDAx Firewall Check Endpoint
@@ -43,7 +43,10 @@ export async function POST(request: Request) {
       // Check with VARDAx firewall
       const vardaxResponse = await fetch(`${VARDAX_API_URL}/api/check`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
+        },
         body: JSON.stringify(requestData),
       })
 

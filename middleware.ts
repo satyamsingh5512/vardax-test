@@ -6,7 +6,7 @@ import type { NextRequest } from 'next/server'
  * Checks each request against the VARDAx firewall running locally
  */
 
-const VARDAX_API_URL = process.env.VARDAX_API_URL || 'http://localhost:8000'
+const VARDAX_API_URL = process.env.VARDAX_API_URL || 'https://spectrological-cinda-unfunereally.ngrok-free.dev'
 const VARDAX_MODE = process.env.VARDAX_MODE || 'monitor' // 'monitor' or 'protect'
 
 export async function middleware(request: NextRequest) {
@@ -39,7 +39,10 @@ export async function middleware(request: NextRequest) {
     // Check with VARDAx firewall
     const vardaxResponse = await fetch(`${VARDAX_API_URL}/api/check`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'ngrok-skip-browser-warning': 'true',
+      },
       body: JSON.stringify(requestData),
     })
 
