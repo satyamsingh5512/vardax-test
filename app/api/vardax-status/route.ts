@@ -1,12 +1,15 @@
 import { NextResponse } from 'next/server'
 
-const VARDAX_API_URL = process.env.VARDAX_API_URL || 'https://spectrological-cinda-unfunereally.ngrok-free.dev'
-
 /**
  * VARDAx Connection Status Endpoint
  * Checks if VARDAx firewall is reachable and returns connection status
  */
-export async function GET() {
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url)
+  const customUrl = searchParams.get('url')
+  
+  const VARDAX_API_URL = customUrl || process.env.VARDAX_API_URL || 'https://spectrological-cinda-unfunereally.ngrok-free.dev'
+
   try {
     const controller = new AbortController()
     const timeoutId = setTimeout(() => controller.abort(), 5000) // 5s timeout

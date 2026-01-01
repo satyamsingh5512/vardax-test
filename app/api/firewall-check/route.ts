@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { headers } from 'next/headers'
 
-const VARDAX_API_URL = process.env.VARDAX_API_URL || 'https://spectrological-cinda-unfunereally.ngrok-free.dev'
+const DEFAULT_VARDAX_URL = process.env.VARDAX_API_URL || 'https://spectrological-cinda-unfunereally.ngrok-free.dev'
 
 /**
  * VARDAx Firewall Check Endpoint
@@ -10,7 +10,7 @@ const VARDAX_API_URL = process.env.VARDAX_API_URL || 'https://spectrological-cin
  *
  * Expected Request:
  *   POST /api/firewall-check
- *   Body: { "path": "/", "clientHint": "test" }
+ *   Body: { "path": "/", "clientHint": "test", "vardaxUrl": "https://..." }
  *
  * Expected Response:
  *   Allowed:  { "allowed": true, "message": "Access granted", "redirect": "/app" }
@@ -22,12 +22,15 @@ export async function POST(request: Request) {
     const body = await request.json()
     const headersList = await headers()
     
+    // Use custom URL if provided, otherwise use default
+    const VARDAX_API_URL = body.vardaxUrl || DEFAULT_VARDAX_URL
+    
     // Get client IP
     const clientIp = headersList.get('x-forwarded-for')?.split(',')[0] || 
                      headersList.get('x-real-ip') || 
                      'unknown'
 
-    console.log('[VARDAx] Firewall check request:', { ...body, ip: clientIp })
+    console.log('[VARDAx] Firewall check request:', { ...body, ip: clientIp, apiUrl: VARDAX_API_URL })
 
     // Prepare request data for VARDAx
     const requestData = {

@@ -55,6 +55,9 @@ export default function FirewallGatePage() {
   const [toasts, setToasts] = useState<Toast[]>([])
   const [shakeCard, setShakeCard] = useState(false)
   const [showModal, setShowModal] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
+  const [vardaxUrl, setVardaxUrl] = useState('')
+  const [urlInput, setUrlInput] = useState('')
   const [vardaxStatus, setVardaxStatus] = useState<VardaxStatus>({
     connected: false,
     status: 'checking',
@@ -67,32 +70,56 @@ export default function FirewallGatePage() {
   const previousFocusRef = useRef<HTMLElement | null>(null)
   const toastIdRef = useRef(0)
 
+  // Load saved URL from localStorage on mount
+  useEffect(() => {
+    const savedUrl = localStorage.getItem('vardaxUrl')
+    if (savedUrl) {
+      setVardaxUrl(savedUrl)
+      setUrlInput(savedUrl)
+    }
+  }, [])
+
   // Check VARDAx connection status
-  const checkVardaxStatus = useCallback(async () => {
+  const checkVardaxStatus = useCallback(async (customUrl?: string) => {
+    const urlToCheck = customUrl || vardaxUrl
     setVardaxStatus(prev => ({ ...prev, status: 'checking' }))
     try {
-      const res = await fetch('/api/vardax-status')
+      const queryParam = urlToCheck ? `?url=${encodeURIComponent(urlToCheck)}` : ''
+      const res = await fetch(`/api/vardax-status${queryParam}`)
       const data = await res.json()
       setVardaxStatus({
         connected: data.connected,
         status: data.connected ? 'online' : 'offline',
         message: data.message,
       })
+      return data.connected
     } catch {
       setVardaxStatus({
         connected: false,
         status: 'offline',
         message: 'Unable to check VARDAx status',
       })
+      return false
     }
-  }, [])
+  }, [vardaxUrl])
 
   // Check VARDAx status on mount and periodically
   useEffect(() => {
     checkVardaxStatus()
-    const interval = setInterval(checkVardaxStatus, 30000) // Check every 30s
+    const interval = setInterval(() => checkVardaxStatus(), 30000) // Check every 30s
     return () => clearInterval(interval)
   }, [checkVardaxStatus])
+
+  // Save and test URL
+  const handleSaveUrl = async () => {
+    const trimmedUrl = urlInput.trim().replace(/\/$/, '') // Remove trailing slash
+    setVardaxUrl(trimmedUrl)
+    localStorage.setItem('vardaxUrl', trimmedUrl)
+    const connected = await checkVardaxStatus(trimmedUrl)
+    if (connected) {
+      setShowSettings(false)
+    }
+  }
 
   // Add toast notification
   const addToast = useCallback((headline: string, message: string) => {
@@ -120,13 +147,16 @@ export default function FirewallGatePage() {
 
     try {
       // POST to your backend endpoint
-      // TODO: Replace with actual API endpoint when backend is ready
       const res = await fetchWithTimeout(
         '/api/firewall-check',
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ path: '/', clientHint: 'test' }),
+          body: JSON.stringify({ 
+            path: '/', 
+            clientHint: 'test',
+            vardaxUrl: vardaxUrl || undefined,
+          }),
         },
         10000 // 10 second timeout
       )
@@ -155,7 +185,7 @@ export default function FirewallGatePage() {
       addToast('Access Denied', message)
       setTimeout(() => setShakeCard(false), 500)
     }
-  }, [addToast])
+  }, [addToast, vardaxUrl])
 
   // Reset UI to initial state
   const handleReset = useCallback(() => {
@@ -221,71 +251,195 @@ export default function FirewallGatePage() {
     <main className="min-h-screen flex items-center justify-center p-4">
       {/* VARDAx Connection Status - Top Bar */}
       <div className="fixed top-4 left-4 z-40">
-        <button
-          onClick={checkVardaxStatus}
-          className={`
-            flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium
-            transition-all duration-300 shadow-md
-            focus:outline-none focus:ring-2 focus:ring-offset-2
-            ${vardaxStatus.status === 'online' 
-              ? 'bg-green-100 text-green-800 hover:bg-green-200 focus:ring-green-500' 
-              : vardaxStatus.status === 'checking'
-              ? 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200 focus:ring-yellow-500'
-              : 'bg-red-100 text-red-800 hover:bg-red-200 focus:ring-red-500'
-            }
-          `}
-          aria-label={`VARDAx status: ${vardaxStatus.message}. Click to refresh.`}
-        >
-          {/* Status Indicator Dot */}
-          <span className="relative flex h-3 w-3">
-            {vardaxStatus.status === 'checking' ? (
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-400 opacity-75" />
-            ) : vardaxStatus.status === 'online' ? (
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
-            ) : null}
-            <span 
-              className={`relative inline-flex rounded-full h-3 w-3 ${
-                vardaxStatus.status === 'online' 
-                  ? 'bg-green-500' 
-                  : vardaxStatus.status === 'checking'
-                  ? 'bg-yellow-500'
-                  : 'bg-red-500'
-              }`} 
-            />
-          </span>
-          
-          {/* Status Text */}
-          <span>
-            {vardaxStatus.status === 'online' 
-              ? 'VARDAx Connected' 
-              : vardaxStatus.status === 'checking'
-              ? 'Checking...'
-              : 'VARDAx Disconnected'
-            }
-          </span>
-
-          {/* Refresh Icon */}
-          <svg 
-            className={`w-4 h-4 ${vardaxStatus.status === 'checking' ? 'animate-spin' : ''}`}
-            fill="none" 
-            stroke="currentColor" 
-            viewBox="0 0 24 24"
-            aria-hidden="true"
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => checkVardaxStatus()}
+            className={`
+              flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium
+              transition-all duration-300 shadow-md
+              focus:outline-none focus:ring-2 focus:ring-offset-2
+              ${vardaxStatus.status === 'online' 
+                ? 'bg-green-100 text-green-800 hover:bg-green-200 focus:ring-green-500' 
+                : vardaxStatus.status === 'checking'
+                ? 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200 focus:ring-yellow-500'
+                : 'bg-red-100 text-red-800 hover:bg-red-200 focus:ring-red-500'
+              }
+            `}
+            aria-label={`VARDAx status: ${vardaxStatus.message}. Click to refresh.`}
           >
-            <path 
-              strokeLinecap="round" 
-              strokeLinejoin="round" 
-              strokeWidth={2} 
-              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" 
-            />
-          </svg>
-        </button>
+            {/* Status Indicator Dot */}
+            <span className="relative flex h-3 w-3">
+              {vardaxStatus.status === 'checking' ? (
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-400 opacity-75" />
+              ) : vardaxStatus.status === 'online' ? (
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+              ) : null}
+              <span 
+                className={`relative inline-flex rounded-full h-3 w-3 ${
+                  vardaxStatus.status === 'online' 
+                    ? 'bg-green-500' 
+                    : vardaxStatus.status === 'checking'
+                    ? 'bg-yellow-500'
+                    : 'bg-red-500'
+                }`} 
+              />
+            </span>
+            
+            {/* Status Text */}
+            <span>
+              {vardaxStatus.status === 'online' 
+                ? 'VARDAx Connected' 
+                : vardaxStatus.status === 'checking'
+                ? 'Checking...'
+                : 'VARDAx Disconnected'
+              }
+            </span>
+
+            {/* Refresh Icon */}
+            <svg 
+              className={`w-4 h-4 ${vardaxStatus.status === 'checking' ? 'animate-spin' : ''}`}
+              fill="none" 
+              stroke="currentColor" 
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+            >
+              <path 
+                strokeLinecap="round" 
+                strokeLinejoin="round" 
+                strokeWidth={2} 
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" 
+              />
+            </svg>
+          </button>
+
+          {/* Settings Button */}
+          <button
+            onClick={() => setShowSettings(true)}
+            className="p-2 rounded-full bg-white shadow-md hover:bg-gray-50 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+            aria-label="Configure VARDAx connection"
+          >
+            <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+          </button>
+        </div>
 
         {/* Tooltip with details */}
-        <div className="mt-2 text-xs text-gray-500 max-w-[200px]">
+        <div className="mt-2 text-xs text-gray-500 max-w-[250px]">
           {vardaxStatus.message}
+          {vardaxUrl && (
+            <div className="mt-1 truncate text-gray-400">
+              {vardaxUrl}
+            </div>
+          )}
         </div>
       </div>
+
+      {/* Settings Modal */}
+      {showSettings && (
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50"
+          onClick={() => setShowSettings(false)}
+        >
+          <div
+            className="bg-white rounded-xl shadow-2xl p-6 max-w-md w-full animate-fade-in"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-bold text-gray-900">VARDAx Configuration</h2>
+              <button
+                onClick={() => setShowSettings(false)}
+                className="text-gray-400 hover:text-gray-600 focus:outline-none"
+                aria-label="Close settings"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <p className="text-sm text-gray-600 mb-4">
+              Enter your VARDAx backend URL (ngrok tunnel or server address) to connect.
+            </p>
+
+            <div className="space-y-4">
+              <div>
+                <label htmlFor="vardax-url" className="block text-sm font-medium text-gray-700 mb-1">
+                  VARDAx Backend URL
+                </label>
+                <input
+                  id="vardax-url"
+                  type="url"
+                  value={urlInput}
+                  onChange={(e) => setUrlInput(e.target.value)}
+                  placeholder="https://your-tunnel.ngrok-free.dev"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors"
+                />
+              </div>
+
+              {/* Connection Status in Modal */}
+              <div className={`p-3 rounded-lg ${
+                vardaxStatus.status === 'online' 
+                  ? 'bg-green-50 border border-green-200' 
+                  : vardaxStatus.status === 'checking'
+                  ? 'bg-yellow-50 border border-yellow-200'
+                  : 'bg-red-50 border border-red-200'
+              }`}>
+                <div className="flex items-center gap-2">
+                  <span className={`w-2 h-2 rounded-full ${
+                    vardaxStatus.status === 'online' 
+                      ? 'bg-green-500' 
+                      : vardaxStatus.status === 'checking'
+                      ? 'bg-yellow-500'
+                      : 'bg-red-500'
+                  }`} />
+                  <span className={`text-sm font-medium ${
+                    vardaxStatus.status === 'online' 
+                      ? 'text-green-800' 
+                      : vardaxStatus.status === 'checking'
+                      ? 'text-yellow-800'
+                      : 'text-red-800'
+                  }`}>
+                    {vardaxStatus.message}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => checkVardaxStatus(urlInput.trim().replace(/\/$/, ''))}
+                  disabled={vardaxStatus.status === 'checking'}
+                  className="flex-1 py-2 px-4 rounded-lg font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 disabled:opacity-50 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
+                >
+                  Test Connection
+                </button>
+                <button
+                  onClick={handleSaveUrl}
+                  disabled={vardaxStatus.status === 'checking'}
+                  className="flex-1 py-2 px-4 rounded-lg font-medium bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                >
+                  Save & Connect
+                </button>
+              </div>
+
+              {vardaxUrl && (
+                <button
+                  onClick={() => {
+                    setUrlInput('')
+                    setVardaxUrl('')
+                    localStorage.removeItem('vardaxUrl')
+                    checkVardaxStatus('')
+                  }}
+                  className="w-full py-2 px-4 rounded-lg font-medium text-red-600 hover:bg-red-50 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                >
+                  Clear Saved URL
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Main Card */}
       <div
